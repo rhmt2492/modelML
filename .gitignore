@@ -1,3 +1,19 @@
+# venv/
+# __pycache__/
+# *.pyc
+# *.h5
+# *.json
+# .DS_Store
+# model/
+
+
+# # Ignore hasil training
+# model/sentiment_model.h5
+# model/tokenizer.json
+# utils/tokenizer.json
+# model/
+
+
 venv/
 __pycache__/
 *.pyc
@@ -6,9 +22,8 @@ __pycache__/
 .DS_Store
 model/
 
-
 # Ignore hasil training
 model/sentiment_model.h5
 model/tokenizer.json
-utils/tokenizer.json
+# utils/tokenizer.json ← dikomentari atau dihapus agar tidak di-ignore
 model/
