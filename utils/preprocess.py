@@ -50,27 +50,19 @@
 
 
 # utils/preprocess.py
-import json
+
 from tensorflow.keras.preprocessing.text import tokenizer_from_json
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-import numpy as np
 import os
+import json
 
-# Load tokenizer dari file JSON
-tokenizer_path = "utils/tokenizer.json"
-try:
-    print("📥 Loading tokenizer...")
-    with open(tokenizer_path, encoding="utf-8") as f:
-        tokenizer_json = f.read()
-    tokenizer = tokenizer_from_json(tokenizer_json)
-    print("✅ Tokenizer loaded.")
-except Exception as e:
-    print("❌ Failed to load tokenizer:", e)
-    tokenizer = None
+tokenizer_path = os.path.join("utils", "tokenizer.json")
+
+with open(tokenizer_path, encoding="utf-8") as f:
+    tokenizer_json = f.read()
+tokenizer = tokenizer_from_json(tokenizer_json)
 
 def preprocess_text(text):
-    if tokenizer is None:
-        raise ValueError("Tokenizer not available")
     seq = tokenizer.texts_to_sequences([text])
     padded = pad_sequences(seq, maxlen=100)
     return padded
