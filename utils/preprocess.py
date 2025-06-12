@@ -1,4 +1,33 @@
 
+from tensorflow.keras.preprocessing.text import tokenizer_from_json
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import os
+import json
+
+tokenizer_path = os.path.join("utils", "tokenizer.json")
+
+with open(tokenizer_path, encoding="utf-8") as f:
+    tokenizer_json = f.read()
+tokenizer = tokenizer_from_json(tokenizer_json)
+
+def preprocess_text(text):
+    seq = tokenizer.texts_to_sequences([text])
+    padded = pad_sequences(seq, maxlen=100)
+    return padded
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # # utils/preprocess.py
 # import json
 # from tensorflow.keras.preprocessing.text import tokenizer_from_json
@@ -50,19 +79,3 @@
 
 
 # utils/preprocess.py
-
-from tensorflow.keras.preprocessing.text import tokenizer_from_json
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-import os
-import json
-
-tokenizer_path = os.path.join("utils", "tokenizer.json")
-
-with open(tokenizer_path, encoding="utf-8") as f:
-    tokenizer_json = f.read()
-tokenizer = tokenizer_from_json(tokenizer_json)
-
-def preprocess_text(text):
-    seq = tokenizer.texts_to_sequences([text])
-    padded = pad_sequences(seq, maxlen=100)
-    return padded
