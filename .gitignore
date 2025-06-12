@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+*.h5
+*.json
+.DS_Store
+model/
+
+
+# Ignore hasil training
+model/sentiment_model.h5
+model/tokenizer.json
+utils/tokenizer.json
+model/
