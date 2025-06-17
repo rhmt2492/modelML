@@ -85,7 +85,7 @@
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model as keras_load_model  # Changed import
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import tokenizer_from_json
 import os
@@ -98,16 +98,20 @@ import numpy as np
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
 
+# Disable GPU and oneDNN warnings if not needed
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 app = Flask(__name__)
 CORS(app)
 
-# Konfigurasi Path
+# Configuration
 MODEL_ID = "1aUMAH8vYY8Qx_efOtKIiUBfU6i6Oa1P1"
 MODEL_DIR = "model"
 MODEL_PATH = os.path.join(MODEL_DIR, "sentiment_model.h5")
 TOKENIZER_PATH = os.path.join("utils", "tokenizer.json")
 
-# Inisialisasi NLTK
+# Initialize NLTK
 def init_nltk():
     try:
         nltk.data.find('tokenizers/punkt')
@@ -123,98 +127,102 @@ def load_tokenizer():
     try:
         with open(TOKENIZER_PATH, 'r', encoding='utf-8') as f:
             tokenizer = tokenizer_from_json(f.read())
-        print("✅ Tokenizer berhasil dimuat")
+        print("✅ Tokenizer loaded successfully")
         return tokenizer
     except Exception as e:
-        print(f"❌ Gagal memuat tokenizer: {str(e)}")
+        print(f"❌ Failed to load tokenizer: {str(e)}")
         return None
 
 tokenizer = load_tokenizer()
 
-# Fungsi Summarization (Tetap sama)
+# Text Summarization Function
 def summarize_text(text, num_sentences=2):
-    sentences = sent_tokenize(text)
-    words = word_tokenize(text.lower())
-    stop_words = set(stopwords.words('indonesian') + list(string.punctuation))
-    
-    word_freq = {}
-    for word in words:
-        if word not in stop_words:
-            word_freq[word] = word_freq.get(word, 0) + 1
-    
-    sentence_scores = {}
-    for sent in sentences:
-        for word in word_tokenize(sent.lower()):
-            if word in word_freq:
-                sentence_scores[sent] = sentence_scores.get(sent, 0) + word_freq[word]
-    
-    summary = heapq.nlargest(num_sentences, sentence_scores, key=sentence_scores.get)
-    return ' '.join(summary)
+    try:
+        sentences = sent_tokenize(text)
+        words = word_tokenize(text.lower())
+        stop_words = set(stopwords.words('indonesian') + list(string.punctuation))
+        
+        word_freq = {}
+        for word in words:
+            if word not in stop_words:
+                word_freq[word] = word_freq.get(word, 0) + 1
+        
+        sentence_scores = {}
+        for sent in sentences:
+            for word in word_tokenize(sent.lower()):
+                if word in word_freq:
+                    sentence_scores[sent] = sentence_scores.get(sent, 0) + word_freq[word]
+        
+        summary = heapq.nlargest(num_sentences, sentence_scores, key=sentence_scores.get)
+        return ' '.join(summary)
+    except Exception as e:
+        print(f"❌ Summarization error: {str(e)}")
+        return text
 
-# Fungsi Preprocessing (Versi Perbaikan)
+# Text Preprocessing
 def preprocess_text(text, tokenizer):
-    """Fungsi baru yang menerima tokenizer sebagai parameter"""
     try:
         sequences = tokenizer.texts_to_sequences([text])
         padded = pad_sequences(sequences, maxlen=100, padding='post')
         return padded
     except Exception as e:
-        print(f"❌ Error preprocessing: {str(e)}")
+        print(f"❌ Preprocessing error: {str(e)}")
         raise
 
 # Download Model
 def download_model():
     if not os.path.exists(MODEL_PATH):
         os.makedirs(MODEL_DIR, exist_ok=True)
-        print("🔽 Mengunduh model dari Google Drive...")
+        print("🔽 Downloading model from Google Drive...")
         try:
             gdown.download(id=MODEL_ID, output=MODEL_PATH, quiet=False)
-            print("✅ Model berhasil diunduh")
+            print("✅ Model downloaded successfully")
             return True
         except Exception as e:
-            print(f"❌ Gagal mengunduh model: {str(e)}")
+            print(f"❌ Failed to download model: {str(e)}")
             return False
     return True
 
-# Load Model
-def load_model():
+# Load Model (renamed from load_model)
+def load_my_model():
     if not download_model():
         return None
     
     try:
-        print("📦 Memuat model...")
-        model = load_model(MODEL_PATH)
-        print("✅ Model berhasil dimuat")
+        print("📦 Loading model...")
+        model = keras_load_model(MODEL_PATH)
+        print("✅ Model loaded successfully")
         return model
     except Exception as e:
-        print(f"❌ Gagal memuat model: {str(e)}")
+        print(f"❌ Failed to load model: {str(e)}")
         return None
 
-model = load_model()
+model = load_my_model()
 
-# Endpoint Health Check
+# Health Check Endpoint
 @app.route("/", methods=["GET"])
 def health_check():
     status = {
         "status": "ready" if model and tokenizer else "error",
         "model_loaded": bool(model),
-        "tokenizer_loaded": bool(tokenizer)
+        "tokenizer_loaded": bool(tokenizer),
+        "summarization": "active"
     }
     return jsonify(status), 200 if model and tokenizer else 503
 
-# Endpoint Predict
+# Prediction Endpoint
 @app.route('/predict', methods=['POST'])
 def predict():
     if not (model and tokenizer):
-        return jsonify({"error": "Model atau tokenizer belum siap"}), 503
+        return jsonify({"error": "Service not ready"}), 503
     
     data = request.get_json()
     if not data or 'text' not in data:
-        return jsonify({"error": "Parameter 'text' diperlukan"}), 400
+        return jsonify({"error": "Text parameter required"}), 400
     
     text = data['text'].strip()
     if not text:
-        return jsonify({"error": "Teks tidak boleh kosong"}), 400
+        return jsonify({"error": "Text cannot be empty"}), 400
     
     try:
         summary = summarize_text(text)
@@ -223,34 +231,34 @@ def predict():
         
         positive = float(prediction[0]) * 100
         negative = 100 - positive
-        sentiment = "Positif" if positive >= 50 else "Negatif"
+        sentiment = "Positive" if positive >= 50 else "Negative"
         
         return jsonify({
             "text": text,
             "summary": summary,
             "sentiment": sentiment,
             "confidence": {
-                "positif": round(positive, 2),
-                "negatif": round(negative, 2)
+                "positive": round(positive, 2),
+                "negative": round(negative, 2)
             }
         })
     except Exception as e:
-        print(f"❌ Error prediksi: {str(e)}")
+        print(f"❌ Prediction error: {str(e)}")
         return jsonify({
-            "error": "Terjadi kesalahan internal",
+            "error": "Internal server error",
             "details": str(e)
         }), 500
 
-# Contoh penggunaan GET
+# GET Example
 @app.route('/predict', methods=['GET'])
 def predict_get():
     return jsonify({
-        "petunjuk": "Gunakan POST request dengan JSON body",
-        "contoh": {
+        "message": "Send POST request with JSON body containing 'text'",
+        "example": {
             "method": "POST",
             "url": "/predict",
             "body": {
-                "text": "Contoh teks untuk dianalisis"
+                "text": "Pelayanan sangat memuaskan!"
             }
         }
     }), 200
