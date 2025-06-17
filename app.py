@@ -1,10 +1,13 @@
+
 # from flask import Flask, request, jsonify
+# from flask_cors import CORS  # ⬅️ Tambahkan ini untuk mengaktifkan CORS
 # from tensorflow.keras.models import load_model
 # from utils.preprocess import preprocess_text
 # import os
 # import gdown
 
 # app = Flask(__name__)
+# CORS(app)  # ⬅️ Aktifkan CORS di seluruh endpoint
 
 # # ==== Download model dari Google Drive jika belum ada ====
 # model_path = os.path.join("model", "sentiment_model.h5")
@@ -60,7 +63,7 @@
 #         print("❌ Error during prediction:", e)
 #         return jsonify({'error': 'Internal Server Error'}), 500
 
-# # ==== Predict endpoint (GET) ====
+# # ==== Predict endpoint (GET info) ====
 # @app.route('/predict', methods=['GET'])
 # def predict_get():
 #     return jsonify({
@@ -79,29 +82,58 @@
 
 
 
-
-
+# ====== Import dasar ======
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # ⬅️ Tambahkan ini untuk mengaktifkan CORS
-from tensorflow.keras.models import load_model
-from utils.preprocess import preprocess_text
+from flask_cors import CORS
 import os
 import gdown
+import nltk
+import string
+import heapq
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
+from tensorflow.keras.models import load_model
+from utils.preprocess import preprocess_text  # pastikan file utils/preprocess.py ada dan benar
 
+# ====== Setup app Flask ======
 app = Flask(__name__)
-CORS(app)  # ⬅️ Aktifkan CORS di seluruh endpoint
+CORS(app)
 
-# ==== Download model dari Google Drive jika belum ada ====
+# ====== Download NLTK (hanya pertama kali) ======
+nltk.download('punkt')
+nltk.download('stopwords')
+
+# ====== Fungsi Ringkasan Teks ======
+def summarize_text(text, num_sentences=2):
+    sentences = sent_tokenize(text)
+    words = word_tokenize(text.lower())
+    stop_words = set(stopwords.words('indonesian'))
+
+    word_frequencies = {}
+    for word in words:
+        if word not in stop_words and word not in string.punctuation:
+            word_frequencies[word] = word_frequencies.get(word, 0) + 1
+
+    sentence_scores = {}
+    for sent in sentences:
+        for word in word_tokenize(sent.lower()):
+            if word in word_frequencies:
+                sentence_scores[sent] = sentence_scores.get(sent, 0) + word_frequencies[word]
+
+    summary_sentences = heapq.nlargest(num_sentences, sentence_scores, key=sentence_scores.get)
+    return ' '.join(summary_sentences)
+
+# ====== Load model jika belum ada ======
 model_path = os.path.join("model", "sentiment_model.h5")
 if not os.path.exists(model_path):
     os.makedirs("model", exist_ok=True)
-    print("🔽 Downloading model from Google Drive...")
+    print("🔽 Downloading model...")
     try:
         gdown.download(id="1aUMAH8vYY8Qx_efOtKIiUBfU6i6Oa1P1", output=model_path, quiet=False)
     except Exception as e:
         print("❌ Failed to download model:", e)
 
-# ==== Load model ====
+# ====== Load model ke memori ======
 try:
     print("📦 Loading model...")
     model = load_model(model_path)
@@ -110,265 +142,47 @@ except Exception as e:
     print("❌ Error loading model:", e)
     model = None
 
-# ==== Health check endpoint ====
+# ====== Health Check Endpoint ======
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
-# ==== Predict endpoint (POST) ====
-@app.route('/predict', methods=['POST'])
-def predict():
+# ====== Endpoint /analyze ======
+@app.route('/analyze', methods=['POST'])
+def analyze():
     if model is None:
         return jsonify({"error": "Model not available"}), 503
 
     data = request.get_json()
-    if 'text' not in data:
-        return jsonify({'error': 'Text is required'}), 400
+    text = data.get("text", "")
+    if not text:
+        return jsonify({"error": "Text is required"}), 400
 
-    text = data['text']
     try:
-        processed = preprocess_text(text)
-        prediction = model.predict(processed)[0]  # Output: satu angka, misal [0.74]
+        # 1. Ringkas teks
+        summary = summarize_text(text)
+
+        # 2. Preprocessing + prediksi sentimen dari ringkasan
+        processed = preprocess_text(summary)
+        prediction = model.predict(processed)[0]
         percent_positif = float(prediction[0]) * 100
         percent_negatif = 100 - percent_positif
         label = "Positif" if percent_positif >= 50 else "Negatif"
 
         return jsonify({
-            'text': text,
-            'sentiment': label,
-            'score': {
-                'positif': percent_positif,
-                'negatif': percent_negatif
+            "original_text": text,
+            "summary": summary,
+            "sentiment": label,
+            "score": {
+                "positif": round(percent_positif, 2),
+                "negatif": round(percent_negatif, 2)
             }
         })
+
     except Exception as e:
-        print("❌ Error during prediction:", e)
-        return jsonify({'error': 'Internal Server Error'}), 500
+        print("❌ Error during analysis:", e)
+        return jsonify({"error": "Internal Server Error"}), 500
 
-# ==== Predict endpoint (GET info) ====
-@app.route('/predict', methods=['GET'])
-def predict_get():
-    return jsonify({
-        "message": "Gunakan metode POST dengan JSON body berisi field 'text' untuk melakukan prediksi.",
-        "example": {
-            "method": "POST",
-            "url": "/predict",
-            "body": {
-                "text": "saya sangat senang dengan pelayanan ini"
-            }
-        }
-    }), 200
-
+# ====== Jalankan App ======
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# from flask import Flask, request, jsonify
-# from tensorflow.keras.models import load_model
-# from utils.preprocess import preprocess_text
-# import os
-# import gdown
-
-# app = Flask(__name__)
-
-# # ==== Download model dari Google Drive jika belum ada ====
-# model_path = os.path.join("model", "sentiment_model.h5")
-# if not os.path.exists(model_path):
-#     os.makedirs("model", exist_ok=True)
-#     print("🔽 Downloading model from Google Drive...")
-#     try:
-#         gdown.download(id="1aUMAH8vYY8Qx_efOtKIiUBfU6i6Oa1P1", output=model_path, quiet=False)
-#     except Exception as e:
-#         print("❌ Failed to download model:", e)
-
-# # ==== Load model ====
-# try:
-#     print("📦 Loading model...")
-#     model = load_model(model_path)
-#     print("✅ Model loaded.")
-# except Exception as e:
-#     print("❌ Error loading model:", e)
-#     model = None
-
-# # ==== Health check endpoint ====
-# @app.route("/", methods=["GET"])
-# def health():
-#     return jsonify({"status": "ok"}), 200
-
-# @app.route('/predict', methods=['POST'])
-# def predict():
-#     if model is None:
-#         return jsonify({"error": "Model not available"}), 503
-
-#     data = request.get_json()
-#     if 'text' not in data:
-#         return jsonify({'error': 'Text is required'}), 400
-
-#     text = data['text']
-#     try:
-#         processed = preprocess_text(text)
-#         prediction = model.predict(processed)[0]  # Output: satu angka, misal [0.74]
-#         percent_positif = float(prediction[0]) * 100
-#         percent_negatif = 100 - percent_positif
-#         label = "Positif" if percent_positif >= 50 else "Negatif"
-
-#         return jsonify({
-#             'text': text,
-#             'sentiment': label,
-#             'score': {
-#                 'positif': percent_positif,
-#                 'negatif': percent_negatif
-#             }
-#         })
-#     except Exception as e:
-#         print("❌ Error during prediction:", e)
-#         return jsonify({'error': 'Internal Server Error'}), 500
-
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=8000)
-
-
-
-
-
-
-
-# from flask import Flask, request, jsonify
-# from tensorflow.keras.models import load_model
-# from utils.preprocess import preprocess_text
-# import os
-
-# app = Flask(__name__)
-
-# # Load model
-# model_path = os.path.join("model", "sentiment_model.h5")
-# model = load_model(model_path)
-
-
-# @app.route('/predict', methods=['POST'])
-# def predict():
-#     data = request.get_json()
-#     if 'text' not in data:
-#         return jsonify({'error': 'Text is required'}), 400
-
-#     text = data['text']
-#     processed = preprocess_text(text)
-#     prediction = model.predict(processed)[0]  # Output: satu angka, misal [0.74]
-
-#     percent_positif = float(prediction[0]) * 100
-#     percent_negatif = 100 - percent_positif
-#     label = "Positif" if percent_positif >= 50 else "Negatif"
-
-#     return jsonify({
-#         'text': text,
-#         'sentiment': label,
-#         'score': {
-#             'positif': percent_positif,
-#             'negatif': percent_negatif
-#         }
-#     })
-
-# if __name__ == '__main__':
-#     app.run(debug=True)
-
-
-# from flask import Flask, request, jsonify
-# from tensorflow.keras.models import load_model
-# from utils.preprocess import preprocess_text
-# import os
-# import gdown  # pastikan gdown ada di requirements.txt
-
-# app = Flask(__name__)
-
-# # ==== Download model dari Google Drive jika belum ada ====
-# model_path = os.path.join("model", "sentiment_model.h5")
-# if not os.path.exists(model_path):
-#     os.makedirs("model", exist_ok=True)
-#     print("🔽 Downloading model from Google Drive...")
-#     # Gunakan ID file Google Drive
-#     gdown.download(id="1aUMAH8vYY8Qx_efOtKIiUBfU6i6Oa1P1", output=model_path, quiet=False)
-
-# # ==== Load model ====
-# model = load_model(model_path)
-
-# @app.route('/predict', methods=['POST'])
-# def predict():
-#     data = request.get_json()
-#     if 'text' not in data:
-#         return jsonify({'error': 'Text is required'}), 400
-
-#     text = data['text']
-#     processed = preprocess_text(text)
-#     prediction = model.predict(processed)[0]  # Output: satu angka, misal [0.74]
-
-#     percent_positif = float(prediction[0]) * 100
-#     percent_negatif = 100 - percent_positif
-#     label = "Positif" if percent_positif >= 50 else "Negatif"
-
-#     return jsonify({
-#         'text': text,
-#         'sentiment': label,
-#         'score': {
-#             'positif': percent_positif,
-#             'negatif': percent_negatif
-#         }
-#     })
-
-# # if __name__ == '__main__':
-# #     app.run(debug=True)
-
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=8000)
-
-
