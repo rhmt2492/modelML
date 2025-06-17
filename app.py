@@ -90,19 +90,31 @@ from tensorflow.keras.models import load_model
 from utils.preprocess import preprocess_text
 import os
 import gdown
-
-# 🔽 Tambahan untuk ringkasan teks
 import nltk
 import string
 import heapq
+import json
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
+from tensorflow.keras.preprocessing.text import tokenizer_from_json
+import numpy as np
 
-# Download resource NLTK
+# 🔽 NLTK resource
 nltk.download('punkt')
 nltk.download('stopwords')
 
-# ==== Fungsi ringkasan ====
+# ==== Load Tokenizer dari file JSON ====
+tokenizer_path = os.path.join("utils", "tokenizer.json")
+try:
+    with open(tokenizer_path, 'r', encoding='utf-8') as f:
+        tokenizer_json = json.load(f)
+        tokenizer = tokenizer_from_json(tokenizer_json)
+    print("✅ Tokenizer loaded.")
+except Exception as e:
+    print("❌ Failed to load tokenizer:", e)
+    tokenizer = None
+
+# ==== Fungsi ringkasan teks ====
 def summarize_text(text, num_sentences=2):
     sentences = sent_tokenize(text, language='english')
     words = word_tokenize(text.lower(), language='english')
@@ -145,7 +157,7 @@ except Exception as e:
     print("❌ Error loading model:", e)
     model = None
 
-# ==== Health check endpoint ====
+# ==== Health check ====
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
@@ -153,8 +165,8 @@ def health():
 # ==== Predict endpoint (POST) ====
 @app.route('/predict', methods=['POST'])
 def predict():
-    if model is None:
-        return jsonify({"error": "Model not available"}), 503
+    if model is None or tokenizer is None:
+        return jsonify({"error": "Model or tokenizer not available"}), 503
 
     data = request.get_json()
     if 'text' not in data:
@@ -162,11 +174,8 @@ def predict():
 
     text = data['text']
     try:
-        # Tambahkan ringkasan
         summary = summarize_text(text)
-
-        # Gunakan ringkasan untuk prediksi
-        processed = preprocess_text(summary)
+        processed = preprocess_text(summary, tokenizer)  # 🟨 Pastikan fungsi ini terima tokenizer
         prediction = model.predict(processed)[0]
         percent_positif = float(prediction[0]) * 100
         percent_negatif = 100 - percent_positif
@@ -185,7 +194,7 @@ def predict():
         print("❌ Error during prediction:", e)
         return jsonify({'error': 'Internal Server Error'}), 500
 
-# ==== Predict endpoint (GET info) ====
+# ==== GET method for predict ====
 @app.route('/predict', methods=['GET'])
 def predict_get():
     return jsonify({
@@ -201,4 +210,3 @@ def predict_get():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
-
