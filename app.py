@@ -93,13 +93,13 @@ import heapq
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
 from tensorflow.keras.models import load_model
-from utils.preprocess import preprocess_text  # pastikan file utils/preprocess.py ada dan benar
+from utils.preprocess import preprocess_text  # pastikan file ini ada dan benar
 
-# ====== Setup app Flask ======
+# ====== Setup Flask ======
 app = Flask(__name__)
 CORS(app)
 
-# ====== Download NLTK (hanya pertama kali) ======
+# ====== Download resource NLTK ======
 nltk.download('punkt')
 nltk.download('stopwords')
 
@@ -142,14 +142,14 @@ except Exception as e:
     print("❌ Error loading model:", e)
     model = None
 
-# ====== Health Check Endpoint ======
+# ====== Health Check ======
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
-# ====== Endpoint /analyze ======
-@app.route('/analyze', methods=['POST'])
-def analyze():
+# ====== Endpoint /predict ======
+@app.route("/predict", methods=["POST"])
+def predict():
     if model is None:
         return jsonify({"error": "Model not available"}), 503
 
@@ -159,11 +159,11 @@ def analyze():
         return jsonify({"error": "Text is required"}), 400
 
     try:
-        # 1. Ringkas teks
+        # Ringkasan
         summary = summarize_text(text)
 
-        # 2. Preprocessing + prediksi sentimen dari ringkasan
-        processed = preprocess_text(summary)
+        # Preprocessing + prediksi sentimen
+        processed = preprocess_text(summary)  # return-nya harus array 2D numpy
         prediction = model.predict(processed)[0]
         percent_positif = float(prediction[0]) * 100
         percent_negatif = 100 - percent_positif
@@ -183,6 +183,7 @@ def analyze():
         print("❌ Error during analysis:", e)
         return jsonify({"error": "Internal Server Error"}), 500
 
-# ====== Jalankan App ======
+# ====== Jalankan server ======
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
