@@ -98,51 +98,43 @@ import numpy as np
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
 
-# Nonaktifkan GPU dan warning oneDNN
+# Nonaktifkan GPU dan warning
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 app = Flask(__name__)
 CORS(app)
 
-# Konfigurasi standar NLP
+# Konfigurasi
 CONFIG = {
-    'MIN_WORDS_FOR_SUMMARY': 30,        # Minimal kata untuk summarization
-    'MIN_SENTENCES_FOR_SUMMARY': 3,     # Minimal kalimat untuk summarization
-    'SUMMARY_SENTENCES': 2,             # Jumlah kalimat dalam ringkasan
-    'MAX_SEQUENCE_LENGTH': 100,         # Maksimal panjang sequence
-    'NEUTRAL_THRESHOLD': 5.0,           # Batas sentiment netral (+/- %)
-    'CONFIDENCE_DECIMALS': 1            # Angka desimal untuk confidence score
+    'MIN_WORDS_FOR_SUMMARY': 30,
+    'MIN_SENTENCES_FOR_SUMMARY': 3,
+    'SUMMARY_SENTENCES': 2,
+    'MAX_SEQUENCE_LENGTH': 100,
+    'NEUTRAL_THRESHOLD': 5.0,
+    'CONFIDENCE_DECIMALS': 1
 }
 
-# Konfigurasi path
 MODEL_ID = "1aUMAH8vYY8Qx_efOtKIiUBfU6i6Oa1P1"
 MODEL_DIR = "model"
 MODEL_PATH = os.path.join(MODEL_DIR, "sentiment_model.h5")
 TOKENIZER_PATH = os.path.join("utils", "tokenizer.json")
 
-# Inisialisasi NLTK dengan penanganan error
 def init_nltk():
     try:
-        nltk.data.find('tokenizers/punkt')
-        nltk.data.find('corpora/stopwords')
-    except LookupError as e:
-        print(f"⚠️ Mengunduh data NLTK: {str(e)}")
-        nltk.download('punkt')
-        nltk.download('stopwords')
+        # Unduh semua resource sekaligus
+        nltk.download(['punkt', 'stopwords', 'punkt_tab'], quiet=True)
+        print("✅ NLTK resources berhasil diunduh")
     except Exception as e:
         print(f"❌ Error inisialisasi NLTK: {str(e)}")
+        raise
 
 init_nltk()
 
-# Load tokenizer dengan validasi
 def load_tokenizer():
     try:
         with open(TOKENIZER_PATH, 'r', encoding='utf-8') as f:
-            tokenizer_data = json.load(f)
-            if not isinstance(tokenizer_data, dict):
-                raise ValueError("Format tokenizer tidak valid")
-            tokenizer = tokenizer_from_json(json.dumps(tokenizer_data))
+            tokenizer = tokenizer_from_json(f.read())
         print("✅ Tokenizer berhasil dimuat")
         return tokenizer
     except Exception as e:
@@ -151,17 +143,13 @@ def load_tokenizer():
 
 tokenizer = load_tokenizer()
 
-# Fungsi untuk menentukan perlu summarization atau tidak
 def should_summarize(text):
-    """Menentukan apakah teks perlu diringkas berdasarkan standar NLP"""
     words = word_tokenize(text)
     sentences = sent_tokenize(text)
     return (len(words) >= CONFIG['MIN_WORDS_FOR_SUMMARY'] and 
             len(sentences) >= CONFIG['MIN_SENTENCES_FOR_SUMMARY'])
 
-# Fungsi summarization dengan standar NLP
 def summarize_text(text):
-    """Extractive summarization mengikuti best practice NLP"""
     if not should_summarize(text):
         return text
     
@@ -169,30 +157,25 @@ def summarize_text(text):
         sentences = sent_tokenize(text)
         words = word_tokenize(text.lower())
         
-        # Stopwords untuk bahasa Indonesia yang lebih lengkap
         stop_words = set(stopwords.words('indonesian') + 
                         list(string.punctuation) + 
-                        ["yang", "dan", "itu", "dengan", "ini", "dia"])
+                        ["yang", "dan", "itu", "dengan"])
         
-        # Perhitungan frekuensi kata
         word_freq = {}
         for word in words:
             if word not in stop_words and word.isalnum():
                 word_freq[word] = word_freq.get(word, 0) + 1
         
-        # Normalisasi frekuensi
         if word_freq:
             max_freq = max(word_freq.values())
             word_freq = {k: v/max_freq for k, v in word_freq.items()}
         
-        # Penilaian kalimat
         sentence_scores = {}
         for sent in sentences:
             for word in word_tokenize(sent.lower()):
                 if word in word_freq:
                     sentence_scores[sent] = sentence_scores.get(sent, 0) + word_freq[word]
         
-        # Ambil kalimat terbaik dengan urutan asli
         if sentence_scores:
             ranked_sentences = sorted(sentence_scores.items(), 
                                     key=lambda x: x[1], 
@@ -204,13 +187,9 @@ def summarize_text(text):
         print(f"❌ Error summarization: {str(e)}")
         return text
 
-# Preprocessing teks standar NLP
 def preprocess_text(text, tokenizer):
-    """Pipeline preprocessing teks standar NLP"""
     try:
-        # Pembuatan sequence dengan penanganan OOV
         sequences = tokenizer.texts_to_sequences([text])
-        # Padding yang cerdas
         padded = pad_sequences(sequences, 
                              maxlen=CONFIG['MAX_SEQUENCE_LENGTH'],
                              padding='post',
@@ -220,7 +199,6 @@ def preprocess_text(text, tokenizer):
         print(f"❌ Error preprocessing: {str(e)}")
         raise
 
-# Download model
 def download_model():
     if not os.path.exists(MODEL_PATH):
         os.makedirs(MODEL_DIR, exist_ok=True)
@@ -234,18 +212,14 @@ def download_model():
             return False
     return True
 
-# Load model dengan validasi
 def load_my_model():
     if not download_model():
         return None
     
     try:
-        print("📦 Memuat model dengan validasi...")
+        print("📦 Memuat model...")
         model = keras_load_model(MODEL_PATH)
-        # Validasi sederhana
-        if not hasattr(model, 'predict'):
-            raise ValueError("Format model tidak valid")
-        print("✅ Model berhasil dimuat dan divalidasi")
+        print("✅ Model berhasil dimuat")
         return model
     except Exception as e:
         print(f"❌ Gagal memuat model: {str(e)}")
@@ -253,18 +227,15 @@ def load_my_model():
 
 model = load_my_model()
 
-# Endpoint health check
 @app.route("/", methods=["GET"])
 def health_check():
     status = {
         "status": "ready" if model and tokenizer else "error",
         "model_loaded": bool(model),
-        "tokenizer_loaded": bool(tokenizer),
-        "summarization": "active"
+        "tokenizer_loaded": bool(tokenizer)
     }
     return jsonify(status), 200 if model and tokenizer else 503
 
-# Endpoint prediksi utama
 @app.route('/predict', methods=['POST'])
 def predict():
     if not (model and tokenizer):
@@ -279,22 +250,17 @@ def predict():
         return jsonify({"error": "Teks tidak boleh kosong"}), 400
     
     try:
-        # Pipeline pemrosesan standar NLP
         summary = summarize_text(text)
         processed = preprocess_text(summary, tokenizer)
         prediction = model.predict(processed)[0]
         
-        # Analisis sentimen yang ditingkatkan
         positive = float(prediction[0]) * 100
         negative = 100 - positive
         
-        # Deteksi range netral
         if abs(positive - 50) < CONFIG['NEUTRAL_THRESHOLD']:
             sentiment = "Netral"
-        elif positive > 50:
-            sentiment = "Positif"
         else:
-            sentiment = "Negatif"
+            sentiment = "Positif" if positive >= 50 else "Negatif"
         
         return jsonify({
             "text": text,
@@ -304,28 +270,14 @@ def predict():
                 "positive": round(positive, CONFIG['CONFIDENCE_DECIMALS']),
                 "negative": round(negative, CONFIG['CONFIDENCE_DECIMALS'])
             },
-            "language": "id"  # Kode bahasa ISO 639-1
+            "language": "id"
         })
     except Exception as e:
         print(f"❌ Error prediksi: {str(e)}")
         return jsonify({
             "error": "Error internal server",
-            "details": str(e)[:200]  # Batasi panjang detail error
+            "details": "Terjadi kesalahan dalam pemrosesan teks"
         }), 500
-
-# Contoh endpoint GET
-@app.route('/predict', methods=['GET'])
-def predict_get():
-    return jsonify({
-        "petunjuk": "Kirim POST request dengan body JSON berisi 'text'",
-        "contoh": {
-            "method": "POST",
-            "url": "/predict",
-            "body": {
-                "text": "Pelayanan sangat memuaskan!"
-            }
-        }
-    }), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
